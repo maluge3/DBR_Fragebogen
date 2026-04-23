@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schlichter Live-Fragebogen mit Häufigkeitstabelle</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+  <div class="max-w-7xl mx-auto p-4 md:p-8">
+    <div class="bg-white rounded-3xl shadow-xl p-6 md:p-8">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+        <div>
+          <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Schlichter Live‑Fragebogen</h1>
+          <p class="text-slate-600 mt-2">Anonyme Mehrnutzer-Eingabe mit Live-Auswertung als Häufigkeitstabelle und Mittelwerten.</p>
+        </div>
+        <span id="statusBadge" class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-amber-100 text-amber-800 w-fit">Nicht verbunden</span>
+      </div>
+
+      <div class="grid xl:grid-cols-4 gap-6">
+        <section class="xl:col-span-1 bg-slate-50 rounded-2xl p-5 border border-slate-200">
+          <h2 class="text-xl font-semibold mb-4">Hinweis</h2>
+          <div class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 space-y-3">
+            <p>Die Verbindung zu Supabase wird automatisch hergestellt.</p>
+            <p>Die Nutzung ist anonym. Teilnehmende müssen keine Zugangsdaten eingeben.</p>
+            <p>Session: <code>dbr-workshop</code></p>
+          </div>
+        </section>
+
+        <section class="xl:col-span-1 bg-slate-50 rounded-2xl p-5 border border-slate-200">
+          <h2 class="text-xl font-semibold mb-4">Fragebogen</h2>
+          <form id="questionnaireForm" class="space-y-5">
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              <div class="font-semibold mb-1">Frage</div>
+              <div>Wieviel Prozent der Zeit arbeitet der Schüler ohne Unterbrechung?</div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Video 1</label>
+              <div class="flex flex-nowrap gap-2 overflow-x-auto pb-2" data-radio-group="item1"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Video 2</label>
+              <div class="flex flex-nowrap gap-2 overflow-x-auto pb-2" data-radio-group="item2"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Video 3</label>
+              <div class="flex flex-nowrap gap-2 overflow-x-auto pb-2" data-radio-group="item3"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Video 4</label>
+              <div class="flex flex-nowrap gap-2 overflow-x-auto pb-2" data-radio-group="item4"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Video 5</label>
+              <div class="flex flex-nowrap gap-2 overflow-x-auto pb-2" data-radio-group="item5"></div>
+            </div>
+            <button class="w-full rounded-2xl bg-slate-900 text-white px-4 py-3 font-semibold hover:bg-slate-800 transition">Antwort absenden</button>
+          </form>
+          <div id="formMessage" class="mt-4 text-sm"></div>
+        </section>
+
+        <section class="xl:col-span-2 bg-slate-50 rounded-2xl p-5 border border-slate-200">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+            <div>
+              <h2 class="text-xl font-semibold">Live-Auswertung</h2>
+              <p class="text-sm text-slate-600">Häufigkeiten und Mittelwerte aller aktuell eingegangenen Antworten</p>
+            </div>
+            <button id="exportBtn" class="rounded-2xl bg-blue-600 text-white px-4 py-2 font-medium">CSV exportieren</button>
+          </div>
+
+          <div class="grid md:grid-cols-4 gap-3 mb-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-sm text-slate-500">Anzahl Antworten</div>
+              <div id="countStat" class="text-3xl font-bold mt-1">0</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-sm text-slate-500">Gesamtmittel</div>
+              <div id="overallMean" class="text-3xl font-bold mt-1">–</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-sm text-slate-500">Letzte Antwort</div>
+              <div id="lastUpdate" class="text-base font-semibold mt-1">–</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-sm text-slate-500">Skala</div>
+              <div class="text-base font-semibold mt-1">0 % bis 100 %</div>
+            </div>
+          </div>
+
+          <div id="tablesContainer" class="space-y-6"></div>
+
+          <div class="mt-8">
+            <h3 class="font-semibold mb-3">Einzelne Antworten</h3>
+            <div class="overflow-auto max-h-[360px] rounded-2xl border border-slate-200 bg-white">
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-100 sticky top-0">
+                  <tr>
+                    <th class="text-left px-3 py-2">Zeit</th>
+                    <th class="text-left px-3 py-2">Video 1</th>
+                    <th class="text-left px-3 py-2">Video 2</th>
+                    <th class="text-left px-3 py-2">Video 3</th>
+                    <th class="text-left px-3 py-2">Video 4</th>
+                    <th class="text-left px-3 py-2">Video 5</th>
+                  </tr>
+                </thead>
+                <tbody id="responsesTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ITEMS = [
+      { key: 'item1', label: 'Video 1' },
+      { key: 'item2', label: 'Video 2' },
+      { key: 'item3', label: 'Video 3' },
+      { key: 'item4', label: 'Video 4' },
+      { key: 'item5', label: 'Video 5' }
+    ];
+
+    const SUPABASE_URL = 'https://yligdpwzpufegorqoxhz.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_4BLVhXmnrzxA16pgSaegHQ_Mknv44cZ';
+    const SESSION_ID = 'dbr-workshop';
+
+    const state = {
+      client: null,
+      channel: null,
+      connected: false,
+      responses: []
+    };
+
+    const el = {
+      statusBadge: document.getElementById('statusBadge'),
+      questionnaireForm: document.getElementById('questionnaireForm'),
+      formMessage: document.getElementById('formMessage'),
+      countStat: document.getElementById('countStat'),
+      overallMean: document.getElementById('overallMean'),
+      lastUpdate: document.getElementById('lastUpdate'),
+      tablesContainer: document.getElementById('tablesContainer'),
+      responsesTable: document.getElementById('responsesTable'),
+      exportBtn: document.getElementById('exportBtn')
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function setStatus(text, type = 'amber') {
+      const map = {
+        amber: 'bg-amber-100 text-amber-800',
+        green: 'bg-emerald-100 text-emerald-800',
+        red: 'bg-rose-100 text-rose-800'
+      };
+      el.statusBadge.className = `inline-flex items-center rounded-full px-3 py-1 text-sm font-medium w-fit ${map[type]}`;
+      el.statusBadge.textContent = text;
+    }
+
+    function showFormMessage(text, type = 'slate') {
+      const map = {
+        slate: 'text-slate-700',
+        green: 'text-emerald-700',
+        red: 'text-rose-700'
+      };
+      el.formMessage.className = `mt-4 text-sm ${map[type]}`;
+      el.formMessage.textContent = text;
+    }
+
+    function formatDate(value) {
+      return new Date(value).toLocaleString('de-DE');
+    }
+
+    function createScaleOptions() {
+      document.querySelectorAll('[data-radio-group]').forEach(container => {
+        const name = container.dataset.radioGroup;
+        container.innerHTML = '';
+        for (let i = 0; i <= 100; i += 10) {
+          const label = document.createElement('label');
+          label.className = 'cursor-pointer';
+          label.innerHTML = `
+            <input type="radio" name="${name}" value="${i}" class="peer sr-only" />
+            <div class="rounded-xl border border-slate-300 bg-white px-2 py-2 text-center text-sm font-medium peer-checked:bg-slate-900 peer-checked:text-white peer-checked:border-slate-900 hover:border-slate-400 transition">${i} %</div>
+          `;
+          container.appendChild(label);
+        }
+      });
+    }
+
+    async function loadResponses() {
+      const { data, error } = await state.client
+        .from('questionnaire_responses')
+        .select('*')
+        .eq('session_id', SESSION_ID)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      state.responses = data || [];
+      renderResponses();
+      renderFrequencyTables();
+      updateStats();
+    }
+
+    function updateStats() {
+      const responses = state.responses;
+      el.countStat.textContent = responses.length;
+      if (!responses.length) {
+        el.overallMean.textContent = '–';
+        el.lastUpdate.textContent = '–';
+        return;
+      }
+
+      let sum = 0;
+      let n = 0;
+      for (const row of responses) {
+        for (const item of ITEMS) {
+          sum += Number(row[item.key] || 0);
+          n += 1;
+        }
+      }
+      el.overallMean.textContent = (sum / n).toFixed(2);
+      el.lastUpdate.textContent = formatDate(responses[0].created_at);
+    }
+
+    function renderResponses() {
+      el.responsesTable.innerHTML = '';
+      for (const row of state.responses) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t border-slate-200 align-top';
+        tr.innerHTML = `
+          <td class="px-3 py-2 whitespace-nowrap">${formatDate(row.created_at)}</td>
+          <td class="px-3 py-2">${row.item1} %</td>
+          <td class="px-3 py-2">${row.item2} %</td>
+          <td class="px-3 py-2">${row.item3} %</td>
+          <td class="px-3 py-2">${row.item4} %</td>
+          <td class="px-3 py-2">${row.item5} %</td>
+        `;
+        el.responsesTable.appendChild(tr);
+      }
+    }
+
+    function getFrequencyForItem(itemKey) {
+      const freq = { 0: 0, 10: 0, 20: 0, 30: 0, 40: 0, 50: 0, 60: 0, 70: 0, 80: 0, 90: 0, 100: 0 };
+      for (const row of state.responses) {
+        const value = Number(row[itemKey]);
+        if (freq[value] !== undefined) freq[value] += 1;
+      }
+      return freq;
+    }
+
+    function getMeanForItem(itemKey) {
+      if (!state.responses.length) return null;
+      const sum = state.responses.reduce((acc, row) => acc + Number(row[itemKey] || 0), 0);
+      return sum / state.responses.length;
+    }
+
+    function renderFrequencyTables() {
+      el.tablesContainer.innerHTML = '';
+      for (const item of ITEMS) {
+        const freq = getFrequencyForItem(item.key);
+        const mean = getMeanForItem(item.key);
+        const total = state.responses.length || 1;
+
+        const wrapper = document.createElement('section');
+        wrapper.className = 'bg-white rounded-2xl border border-slate-200 p-4';
+        wrapper.innerHTML = `
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+            <div>
+              <h3 class="font-semibold">${escapeHtml(item.label)}</h3>
+              <p class="text-sm text-slate-500">Frage: Wieviel Prozent der Zeit arbeitet der Schüler ohne Unterbrechung?</p>
+            </div>
+            <div class="text-sm font-semibold bg-blue-50 text-blue-800 rounded-xl px-3 py-2 w-fit">Mittelwert: ${mean !== null ? mean.toFixed(2) : '–'}</div>
+          </div>
+          <div class="overflow-auto rounded-2xl border border-slate-200">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-100">
+                <tr>
+                  <th class="text-left px-3 py-2">Antwortwert</th>
+                  <th class="text-left px-3 py-2">Häufigkeit</th>
+                  <th class="text-left px-3 py-2">Prozent</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${[0,10,20,30,40,50,60,70,80,90,100].map(value => `
+                  <tr class="border-t border-slate-200">
+                    <td class="px-3 py-2 font-medium">${value} %</td>
+                    <td class="px-3 py-2">${freq[value]}</td>
+                    <td class="px-3 py-2">${state.responses.length ? ((freq[value] / total) * 100).toFixed(1) + ' %' : '0.0 %'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        el.tablesContainer.appendChild(wrapper);
+      }
+    }
+
+    async function connectSupabase() {
+      try {
+        state.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        await loadResponses();
+
+        if (state.channel) {
+          await state.client.removeChannel(state.channel);
+        }
+
+        state.channel = state.client
+          .channel(`questionnaire-${SESSION_ID}`)
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'questionnaire_responses',
+            filter: `session_id=eq.${SESSION_ID}`
+          }, async () => {
+            await loadResponses();
+          })
+          .subscribe(status => {
+            if (status === 'SUBSCRIBED') {
+              state.connected = true;
+              setStatus('Live verbunden', 'green');
+              showFormMessage('Verbindung hergestellt. Neue Antworten erscheinen automatisch.', 'green');
+            }
+          });
+      } catch (error) {
+        console.error(error);
+        setStatus('Fehler', 'red');
+        showFormMessage(`Verbindung fehlgeschlagen: ${error.message}`, 'red');
+      }
+    }
+
+    async function submitForm(event) {
+      event.preventDefault();
+
+      if (!state.client || !state.connected) {
+        showFormMessage('Bitte kurz warten, die Verbindung wird aufgebaut.', 'red');
+        return;
+      }
+
+      const payload = {
+        session_id: SESSION_ID,
+        item1: Number(document.querySelector('input[name="item1"]:checked')?.value || 50),
+        item2: Number(document.querySelector('input[name="item2"]:checked')?.value || 50),
+        item3: Number(document.querySelector('input[name="item3"]:checked')?.value || 50),
+        item4: Number(document.querySelector('input[name="item4"]:checked')?.value || 50),
+        item5: Number(document.querySelector('input[name="item5"]:checked')?.value || 50)
+      };
+
+      try {
+        const { error } = await state.client.from('questionnaire_responses').insert(payload);
+        if (error) throw error;
+        el.questionnaireForm.reset();
+        createScaleOptions();
+        showFormMessage('Antwort gespeichert.', 'green');
+      } catch (error) {
+        console.error(error);
+        showFormMessage(`Speichern fehlgeschlagen: ${error.message}`, 'red');
+      }
+    }
+
+    function exportCsv() {
+      if (!state.responses.length) {
+        showFormMessage('Keine Daten zum Export vorhanden.', 'red');
+        return;
+      }
+      const columns = ['created_at', 'item1', 'item2', 'item3', 'item4', 'item5'];
+      const lines = [columns.join(';')];
+      for (const row of state.responses) {
+        lines.push(columns.map(col => `"${String(row[col] ?? '').replaceAll('"', '""')}"`).join(';'));
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fragebogen-${SESSION_ID}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    createScaleOptions();
+    renderFrequencyTables();
+    connectSupabase();
+    el.questionnaireForm.addEventListener('submit', submitForm);
+    el.exportBtn.addEventListener('click', exportCsv);
+  </script>
+</body>
+</html>
